@@ -1,46 +1,92 @@
+import base64
+from io import BytesIO
+import os
+import tempfile
+import time
+
+import ollama
 import streamlit as st
-import google.generativeai as genai
 from PIL import Image
 import PyPDF2
-import tempfile
-import os
-from google.api_core import exceptions
 from dotenv import load_dotenv
-import time
 
 load_dotenv()
 
-# Configure the Gemini AI model
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    st.error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.")
-    st.stop()
-
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
+VISION_MODEL = "llama3.2-vision:11b"
+TEXT_MODEL = "qwen2.5vl:32b"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 
-def analyze_medical_report(content, content_type):
-    prompt = "Analyze this medical report concisely. Provide key findings, diagnoses, and recommendations:"
-    
+
+def ensure_ollama_running():
+    try:
+        ollama.list()
+    except Exception as exc:
+        st.error(
+            "Unable to communicate with the local Ollama server. "
+            "Please ensure Ollama is installed, running, and that the required models "
+            f"({VISION_MODEL} and {TEXT_MODEL}) are pulled.\nDetails: {exc}"
+        )
+        st.stop()
+
+
+def _image_to_base64(image: Image.Image) -> str:
+    buffer = BytesIO()
+    image.convert("RGB").save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+def _query_ollama(model_name: str, messages: list, content, content_type: str) -> str:
     for attempt in range(MAX_RETRIES):
         try:
-            if content_type == "image":
-                response = model.generate_content([prompt, content])
-            else:  # text
-                # Gemini 1.5 Flash can handle larger inputs, so we'll send the full text
-                response = model.generate_content(f"{prompt}\n\n{content}")
-            
-            return response.text
-        except exceptions.GoogleAPIError as e:
+            response = ollama.chat(model=model_name, messages=messages)
+            return response["message"]["content"].strip()
+        except Exception as exc:
             if attempt < MAX_RETRIES - 1:
-                st.warning(f"An error occurred. Retrying in {RETRY_DELAY} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})")
+                st.warning(
+                    f"An error occurred. Retrying in {RETRY_DELAY} seconds... "
+                    f"(Attempt {attempt + 1}/{MAX_RETRIES})\nDetails: {exc}"
+                )
                 time.sleep(RETRY_DELAY)
             else:
-                st.error(f"Failed to analyze the report after {MAX_RETRIES} attempts. Error: {str(e)}")
+                st.error(
+                    f"Failed to analyze the report after {MAX_RETRIES} attempts.\nDetails: {exc}"
+                )
                 return fallback_analysis(content, content_type)
+
+
+def analyze_medical_report(content, content_type):
+    prompt = (
+        "Analyze this medical report concisely. Provide key findings, diagnoses, "
+        "and recommendations using patient-friendly language."
+    )
+
+    if content_type == "image":
+        encoded_image = _image_to_base64(content)
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a medical analysis assistant specialized in interpreting lab reports.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+                "images": [encoded_image],
+            },
+        ]
+        return _query_ollama(VISION_MODEL, messages, content, content_type)
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You explain complex blood test findings clearly and safely.",
+        },
+        {
+            "role": "user",
+            "content": f"{prompt}\n\n{content}",
+        },
+    ]
+    return _query_ollama(TEXT_MODEL, messages, content, content_type)
 
 def fallback_analysis(content, content_type):
     st.warning("Using fallback analysis method due to API issues.")
@@ -65,6 +111,7 @@ def extract_text_from_pdf(pdf_file):
     return text
 
 def main():
+    ensure_ollama_running()
     st.title("AI-driven Medical Report Analyzer")
     st.write("Upload a medical report (image or PDF) for analysis")
 

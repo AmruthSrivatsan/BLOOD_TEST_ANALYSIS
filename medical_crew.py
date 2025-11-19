@@ -1,9 +1,9 @@
 from crewai import Agent
 from tools import search_tool, web_search_tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.chat_models import ChatOllama
 
-# Configure GEMINI model with appropriate settings
-gemini_model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.7)
+# Configure local Ollama model with the Qwen vision-language model for textual reasoning
+ollama_model = ChatOllama(model="qwen2.5vl:32b", temperature=0.7)
 
 class BloodTestAnalyst(Agent):
     def __init__(self):
@@ -13,7 +13,7 @@ class BloodTestAnalyst(Agent):
             backstory="A seasoned hematologist with over a decade of experience...",
             verbose=True,
             allow_delegation=False,
-            llm=gemini_model
+            llm=ollama_model
         )
 
     def analyze_report(self, input_data):
@@ -29,7 +29,7 @@ class MedicalResearchSpecialist(Agent):
             tools=[search_tool, web_search_tool],
             verbose=True,
             allow_delegation=False,
-            llm=gemini_model
+            llm=ollama_model
         )
 
     def conduct_research(self, input_data):
@@ -44,7 +44,7 @@ class HolisticHealthAdvisor(Agent):
             backstory="A holistic health practitioner with a deep understanding...",
             verbose=True,
             allow_delegation=False,
-            llm=gemini_model
+            llm=ollama_model
         )
 
     def provide_recommendations(self, input_data):

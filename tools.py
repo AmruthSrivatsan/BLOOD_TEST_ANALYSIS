@@ -6,17 +6,16 @@ search_tool = SerperDevTool()
 web_search_tool = WebsiteSearchTool(
     config=dict(
         llm=dict(
-            provider="google",
+            provider="ollama",
             config=dict(
-                model="gemini-pro",
+                model="qwen2.5vl:32b",
                 temperature=0.7,
             ),
         ),
         embedder=dict(
-            provider="google",
+            provider="ollama",
             config=dict(
-                model="models/embedding-001",
-                task_type="retrieval_document",
+                model="qwen2.5vl:32b",
             ),
         ),
     )
