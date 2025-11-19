@@ -1,105 +1,73 @@
+"""CrewAI agent definitions that consume structured JSON."""
+from __future__ import annotations
+
+from typing import Dict
+
 from crewai import Agent
-from tools import search_tool, web_search_tool
 from langchain_community.chat_models import ChatOllama
 
-# Configure local Ollama model
-ollama_model = ChatOllama(model="qwen2.5vl:32b", temperature=0.7)
+from tools import knowledge_base_tool
 
-# Blood Test Analyst Agent
-blood_test_analyst = Agent(
-    role='Blood Test Analyst',
-    goal=(
-        "Analyze the blood test report, identify key abnormalities or normal values, "
-        "correlate findings with potential medical conditions, and provide a "
-        "detailed, easy-to-understand summary of the findings."
-    ),
-    backstory=(
-        "A seasoned hematologist with over a decade of experience in clinical "
-        "diagnostics, specializing in blood test analysis. This agent has a deep "
-        "understanding of how various blood parameters interact and affect overall "
-        "health. Known for their ability to translate complex medical jargon into "
-        "layman's terms, ensuring patients fully understand their health status."
-    ),
-    verbose=True,
-    allow_delegation=False,
-    llm=ollama_model,
-    methods={
-        "analyze_report": (
-            "Perform a thorough analysis of the blood test report. "
-            "For each parameter, compare it against the normal range specified in the report. "
-            "Identify any deviations and assess their potential medical significance. "
-            "Consider the patient's age, gender, and any other relevant factors in the analysis."
-        )
-    },
-    expected_output=(
-        "A comprehensive summary of the blood test findings, highlighting any "
-        "abnormal values and potential medical concerns. The summary should be "
-        "presented in a patient-friendly format, with clear explanations of each "
-        "finding and its significance."
+TEXT_MODEL = "qwen2.5vl:32b"
+
+
+def _build_llm(temperature: float = 0.1) -> ChatOllama:
+    return ChatOllama(model=TEXT_MODEL, temperature=temperature)
+
+
+def build_agents() -> Dict[str, Agent]:
+    """Instantiate all CrewAI agents with JSON-aware prompts."""
+    llm = _build_llm()
+
+    blood_test_analyst = Agent(
+        role="Blood Test Analyst",
+        goal=(
+            "Given a structured JSON object with patient details and lab tests, "
+            "produce precise key findings backed by the provided numeric values."
+        ),
+        backstory=(
+            "You are a hematologist who only trusts validated data."
+            " Work exclusively with the JSON fields provided and avoid inventing"
+            " new test results."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        llm=llm,
     )
-)
 
-# Medical Research Specialist Agent
-article_researcher = Agent(
-    role='Medical Research Specialist',
-    goal=(
-        "Identify and summarize relevant, high-quality medical articles and research studies "
-        "that are directly related to the abnormalities or concerns found in the blood test report."
-    ),
-    backstory=(
-        "An accomplished medical researcher with a background in evidence-based medicine "
-        "and academic research. This agent is skilled in navigating vast medical databases "
-        "and filtering through the noise to find the most pertinent and credible studies. "
-        "Their expertise ensures that the information provided is both accurate and relevant."
-    ),
-    tools=[search_tool, web_search_tool],
-    verbose=True,
-    allow_delegation=False,
-    llm=ollama_model,
-    methods={
-        "conduct_research": (
-            "Search for recent and relevant medical literature that corresponds "
-            "to the findings in the blood test analysis. Summarize the key points "
-            "of each study, focusing on their relevance to the patient's condition."
-        )
-    },
-    expected_output=(
-        "A list of summarized articles or studies that support the blood test analysis. Each "
-        "summary should include the study's relevance, key findings, and how it applies to the "
-        "specific abnormalities identified in the blood test report."
+    article_researcher = Agent(
+        role="Medical Research Specialist",
+        goal=(
+            "Use the structured lab JSON and known abnormalities to suggest"
+            " trusted resources or follow-up readings without inventing values."
+        ),
+        backstory=(
+            "You maintain an offline index of reputable medical societies and"
+            " guidelines. Reference concrete lab flags when selecting topics."
+        ),
+        tools=[knowledge_base_tool],
+        verbose=True,
+        allow_delegation=False,
+        llm=llm,
     )
-)
 
-# Holistic Health Advisor Agent
-health_advisor = Agent(
-    role='Holistic Health Advisor',
-    goal=(
-        "Provide personalized health recommendations based on the blood test analysis and "
-        "the research findings. The advice should integrate medical insights with practical "
-        "lifestyle changes, aiming to improve or maintain the patient's overall health."
-    ),
-    backstory=(
-        "A holistic health practitioner with a deep understanding of both conventional and "
-        "alternative medicine. This agent combines clinical knowledge with lifestyle management "
-        "expertise, offering advice that is not only evidence-based but also tailored to the "
-        "patient's unique needs and circumstances."
-    ),
-    verbose=True,
-    allow_delegation=False,
-    llm=ollama_model,
-    methods={
-        "provide_recommendations": (
-            "Review the blood test findings and research summaries to "
-            "create a set of actionable health recommendations. These "
-            "recommendations should address any identified health risks "
-            "and provide guidance on diet, exercise, and other lifestyle factors."
-        )
-    },
-    expected_output=(
-        "A comprehensive set of health recommendations that include dietary suggestions, "
-        "exercise plans, and other lifestyle adjustments. Each recommendation should be "
-        "linked to the findings from the blood test and the supporting research, ensuring "
-        "that the advice is both relevant and practical."
+    health_advisor = Agent(
+        role="Holistic Health Advisor",
+        goal=(
+            "Combine the JSON data and researcher notes to deliver pragmatic"
+            " lifestyle advice and recommended follow-up tests."
+        ),
+        backstory=(
+            "You translate quantitative insights into actionable, patient-friendly"
+            " plans while clearly noting uncertainties."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        llm=llm,
     )
-)
 
+    return {
+        "analyst": blood_test_analyst,
+        "researcher": article_researcher,
+        "advisor": health_advisor,
+    }
