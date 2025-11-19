@@ -2,11 +2,11 @@
 
 ## Overview
 
-The Medical Report Analysis app is a comprehensive tool designed to analyze blood test reports from PDF files. Built using the Streamlit framework, this application processes the data extracted from the PDF and delivers a detailed analysis, which includes key medical findings, potential health concerns, recommended follow-up tests, actionable lifestyle advice, and references to trusted medical resources. The goal of this application is to provide users with insights into their health based on their blood test reports and to offer guidance on necessary steps for improving or maintaining their health.
+The Medical Report Analysis app is a comprehensive tool designed to analyze blood test reports from PDF files or uploaded images. Built using the Streamlit framework and powered entirely by locally hosted Ollama models (`llama3.2-vision:11b` for vision tasks and `qwen2.5vl:32b` for text reasoning), this application processes the data extracted from the uploaded files and delivers a detailed analysis. Results include key medical findings, potential health concerns, recommended follow-up tests, actionable lifestyle advice, and references to trusted medical resources—all without requiring access to paid external LLM APIs.
 
 ## Features
 
-- **PDF Upload:** Users can upload their blood test reports in PDF format, which the app will analyze.
+- **Image or PDF Upload:** Users can upload their blood test reports in PDF or image format, which the app will analyze entirely on-device.
 - **Detailed Analysis:** The app leverages the CrewAI framework, involving specialized agents, to parse and analyze the report data, providing a comprehensive summary of the results.
 - **Health Recommendations:** Based on the analysis, the app generates personalized health advice, including lifestyle modifications and suggested medical follow-ups.
 - **Trusted Resources:** The app includes references to high-quality medical articles and resources, allowing users to further understand their health conditions.
@@ -21,7 +21,7 @@ The Medical Report Analysis app is a comprehensive tool designed to analyze bloo
 
 ### Prerequisites
 
-Ensure that you have Python 3.8 or above installed on your machine.
+Ensure that you have Python 3.8 or above installed on your machine along with the latest version of [Ollama](https://ollama.com/).
 
 ### Step-by-Step Guide
 
@@ -30,16 +30,17 @@ Ensure that you have Python 3.8 or above installed on your machine.
    git clone https://github.com/AK2k30/BLOOD_TEST_ANALYSIS.git
    ```
    
-2. **Install Dependencies:**
+2. **Install Python Dependencies:**
    Use the following command to install the required Python packages:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Environment Variables:**
-   Create a `.env` file in the root directory of the project and add your environment variables:
-   ```plaintext
-   GEMINI_API_KEY='your_gemini_api_key'
+3. **Prepare Ollama Models:**
+   Make sure the local Ollama server is running and pull the required models:
+   ```bash
+   ollama pull llama3.2-vision:11b
+   ollama pull qwen2.5vl:32b
    ```
 
 4. **Run the Application:**
@@ -69,15 +70,17 @@ Ensure that you have Python 3.8 or above installed on your machine.
 ## Project Structure
 
 ```
-medical-report-analysis/
+BLOOD_TEST_ANALYSIS/
 │
-├── app.py               # Main application script
-├── agents.py            # Definitions of CrewAI agents
-├── tasks.py             # Task definitions for CrewAI
+├── main.py              # Streamlit application entry point (image & PDF analysis)
+├── agents.py            # Definitions of CrewAI agents powered by Ollama
+├── medical_crew.py      # Object-oriented agent definitions
+├── tasks.py             # Task definitions for CrewAI orchestration
+├── tools.py             # Search and website retrieval helpers configured for Ollama
 ├── requirements.txt     # List of Python dependencies
-├── .env                 # Environment variables
+├── pyproject.toml       # Optional Poetry configuration
 ├── README.md            # Project documentation
-└── LICENSE              # License for the project
+└── assets/, db/, etc.   # Supporting assets and data
 ```
 
 ## Contributing

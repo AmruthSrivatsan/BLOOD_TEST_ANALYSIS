@@ -1,9 +1,9 @@
 from crewai import Agent
 from tools import search_tool, web_search_tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.chat_models import ChatOllama
 
-# Configure GEMINI model with appropriate settings
-gemini_model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.7)
+# Configure local Ollama model
+ollama_model = ChatOllama(model="qwen2.5vl:32b", temperature=0.7)
 
 # Blood Test Analyst Agent
 blood_test_analyst = Agent(
@@ -22,7 +22,7 @@ blood_test_analyst = Agent(
     ),
     verbose=True,
     allow_delegation=False,
-    llm=gemini_model,
+    llm=ollama_model,
     methods={
         "analyze_report": (
             "Perform a thorough analysis of the blood test report. "
@@ -55,7 +55,7 @@ article_researcher = Agent(
     tools=[search_tool, web_search_tool],
     verbose=True,
     allow_delegation=False,
-    llm=gemini_model,
+    llm=ollama_model,
     methods={
         "conduct_research": (
             "Search for recent and relevant medical literature that corresponds "
@@ -86,7 +86,7 @@ health_advisor = Agent(
     ),
     verbose=True,
     allow_delegation=False,
-    llm=gemini_model,
+    llm=ollama_model,
     methods={
         "provide_recommendations": (
             "Review the blood test findings and research summaries to "
