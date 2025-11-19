@@ -1,159 +1,104 @@
-import base64
-from io import BytesIO
-import os
-import tempfile
-import time
+"""Streamlit front-end for deterministic blood test analysis."""
+from __future__ import annotations
+
+import json
+from typing import Any, Dict
 
 import ollama
 import streamlit as st
-from PIL import Image
-import PyPDF2
 from dotenv import load_dotenv
+
+from extractor import ReportExtractor
+from medical_crew import MedicalCrew
 
 load_dotenv()
 
 VISION_MODEL = "llama3.2-vision:11b"
 TEXT_MODEL = "qwen2.5vl:32b"
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
 
 
-def ensure_ollama_running():
+def ensure_ollama_running() -> None:
     try:
         ollama.list()
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover - UI side effect
         st.error(
             "Unable to communicate with the local Ollama server. "
-            "Please ensure Ollama is installed, running, and that the required models "
-            f"({VISION_MODEL} and {TEXT_MODEL}) are pulled.\nDetails: {exc}"
+            f"Ensure {VISION_MODEL} and {TEXT_MODEL} are available.\n{exc}"
         )
         st.stop()
 
 
-def _image_to_base64(image: Image.Image) -> str:
-    buffer = BytesIO()
-    image.convert("RGB").save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+def _display_tests_table(tests: list[Dict[str, Any]]) -> None:
+    if not tests:
+        st.info("No lab tests were detected. Please verify the upload quality.")
+        return
+    st.dataframe(tests, use_container_width=True)
 
 
-def _query_ollama(model_name: str, messages: list, content, content_type: str) -> str:
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = ollama.chat(model=model_name, messages=messages)
-            return response["message"]["content"].strip()
-        except Exception as exc:
-            if attempt < MAX_RETRIES - 1:
-                st.warning(
-                    f"An error occurred. Retrying in {RETRY_DELAY} seconds... "
-                    f"(Attempt {attempt + 1}/{MAX_RETRIES})\nDetails: {exc}"
-                )
-                time.sleep(RETRY_DELAY)
-            else:
-                st.error(
-                    f"Failed to analyze the report after {MAX_RETRIES} attempts.\nDetails: {exc}"
-                )
-                return fallback_analysis(content, content_type)
-
-
-def analyze_medical_report(content, content_type):
-    prompt = (
-        "Analyze this medical report concisely. Provide key findings, diagnoses, "
-        "and recommendations using patient-friendly language."
+def _download_button(data: Dict[str, Any]) -> None:
+    json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+    st.download_button(
+        label="Download JSON",
+        data=json_bytes,
+        file_name="blood_report.json",
+        mime="application/json",
     )
 
-    if content_type == "image":
-        encoded_image = _image_to_base64(content)
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a medical analysis assistant specialized in interpreting lab reports.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-                "images": [encoded_image],
-            },
-        ]
-        return _query_ollama(VISION_MODEL, messages, content, content_type)
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You explain complex blood test findings clearly and safely.",
-        },
-        {
-            "role": "user",
-            "content": f"{prompt}\n\n{content}",
-        },
-    ]
-    return _query_ollama(TEXT_MODEL, messages, content, content_type)
-
-def fallback_analysis(content, content_type):
-    st.warning("Using fallback analysis method due to API issues.")
-    if content_type == "image":
-        return "Unable to analyze the image due to API issues. Please try again later or consult a medical professional for accurate interpretation."
-    else:  # text
-        word_count = len(content.split())
-        return f"""
-        Fallback Analysis:
-        1. Document Type: Text-based medical report
-        2. Word Count: Approximately {word_count} words
-        3. Content: The document appears to contain medical information, but detailed analysis is unavailable due to technical issues.
-        4. Recommendation: Please review the document manually or consult with a healthcare professional for accurate interpretation.
-        5. Note: This is a simplified analysis due to temporary unavailability of the AI service. For a comprehensive analysis, please try again later.
-        """
-
-def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
-
-def main():
+def main() -> None:
     ensure_ollama_running()
-    st.title("AI-driven Medical Report Analyzer")
-    st.write("Upload a medical report (image or PDF) for analysis")
+    st.title("Deterministic Blood Test Intelligence")
+    st.caption(
+        "Upload a lab report to obtain a structured JSON extraction and"
+        " AI-generated explanations based on local Ollama models."
+    )
 
-    file_type = st.radio("Select file type:", ("Image", "PDF"))
+    extractor = ReportExtractor()
+    crew = MedicalCrew()
 
-    if file_type == "Image":
-        uploaded_file = st.file_uploader("Choose a medical report image", type=["jpg", "jpeg", "png"])
-        if uploaded_file is not None:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
+    uploaded_file = st.file_uploader(
+        "Upload report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"]
+    )
 
-            image = Image.open(tmp_file_path)
-            st.image(image, caption="Uploaded Medical Report", use_column_width=True)
+    if not uploaded_file:
+        return
 
-            if st.button("Analyze Image Report"):
-                with st.spinner("Analyzing the medical report image..."):
-                    analysis = analyze_medical_report(image, "image")
-                    st.subheader("Analysis Results:")
-                    st.write(analysis)
+    file_bytes = uploaded_file.read()
 
-            os.unlink(tmp_file_path)
+    if st.button("Analyze Report", type="primary"):
+        with st.spinner("Extracting structured data..."):
+            try:
+                structured = extractor.extract(file_bytes, uploaded_file.name)
+            except Exception as exc:
+                st.error(f"Extraction failed: {exc}")
+                return
 
-    else:  # PDF
-        uploaded_file = st.file_uploader("Choose a medical report PDF", type=["pdf"])
-        if uploaded_file is not None:
-            st.write("PDF uploaded successfully")
+        st.subheader("Structured JSON Output")
+        st.json(structured)
+        _download_button(structured)
 
-            if st.button("Analyze PDF Report"):
-                with st.spinner("Analyzing the medical report PDF..."):
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                        tmp_file.write(uploaded_file.getvalue())
-                        tmp_file_path = tmp_file.name
+        st.subheader("Parsed Lab Tests")
+        _display_tests_table(structured.get("tests", []))
 
-                    with open(tmp_file_path, 'rb') as pdf_file:
-                        pdf_text = extract_text_from_pdf(pdf_file)
+        with st.spinner("Generating narrative insights from structured data..."):
+            analysis = crew.run(structured)
 
-                    analysis = analyze_medical_report(pdf_text, "text")
-                    st.subheader("Analysis Results:")
-                    st.write(analysis)
+        st.subheader("AI Narrative Insights")
+        st.markdown("### Key Findings")
+        st.markdown(analysis.get("key_findings", "No output."))
 
-                    os.unlink(tmp_file_path)
+        st.markdown("### Health Concerns")
+        st.markdown(analysis.get("health_concerns", "No output."))
+
+        st.markdown("### Recommended Follow-up Tests")
+        st.markdown(analysis.get("recommended_tests", "No output."))
+
+        st.markdown("### Lifestyle Advice")
+        st.markdown(analysis.get("lifestyle_advice", "No output."))
+
+        st.markdown("### Trusted Resources")
+        st.markdown(analysis.get("trusted_resources", "No output."))
+
 
 if __name__ == "__main__":
     main()

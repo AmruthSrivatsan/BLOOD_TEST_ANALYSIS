@@ -1,53 +1,78 @@
-from crewai import Task
-from agents import blood_test_analyst, article_researcher, health_advisor
+"""Task templates that operate on the canonical lab JSON."""
+from __future__ import annotations
 
-# Define tasks
-analyze_blood_test_task = Task(
-    description='''
-    You will be analyzing the following blood test report:
-    "{text}"
+from dataclasses import dataclass
+from typing import List
 
-    Instructions:
-    1. Review each test result in the report.
-    2. Identify the test name, the value, and the normal range.
-    3. Compare the test value to the normal range:
-        - If the value is within the normal range, note that it is normal.
-        - If the value is outside the normal range, highlight it and explain the potential implications.
-    4. Provide a comprehensive summary including:
-        - An overview of all test results.
-        - A detailed analysis of any abnormal values.
-        - Potential implications of the abnormal results.
-        - Suggestions for further investigation if needed.
-    ''',
-    expected_output='A comprehensive summary of the blood test results, highlighting abnormal values with explanations and potential implications.',
-    agent=blood_test_analyst,
-)
 
-find_articles_task = Task(
-    description='''
-    Following the analysis of the blood test report, perform the following tasks:
-    1. Identify key health concerns or issues highlighted by the abnormal values in the blood test report.
-    2. Search the web for 3-5 recent, high-quality medical articles that are directly related to each identified health concern.
-    3. For each selected article, provide:
-        - The full title and author(s) of the article.
-        - A concise summary of the main findings or recommendations.
-        - A clear explanation of how the article's findings relate to the blood test results.
-    ''',
-    expected_output='A list of 3-5 carefully selected medical articles with summaries and relevance to the blood test results.',
-    agent=article_researcher,
-    context=[analyze_blood_test_task]
-)
+@dataclass(frozen=True)
+class TaskTemplate:
+    key: str
+    agent: str
+    instructions: str
 
-provide_recommendations_task = Task(
-    description='''
-    Based on the detailed analysis of the blood test report and the relevant articles, provide comprehensive health recommendations:
-    1. Summarize the key findings from the blood test report and articles.
-    2. Identify the main health concerns highlighted by the test results and articles.
-    3. Recommend any additional tests or follow-ups that may be necessary for further evaluation.
-    4. Offer actionable lifestyle advice aimed at improving overall health, considering the specific findings of the blood test.
-    5. Include links to the referenced articles or additional trusted resources for further reading.
-    ''',
-    expected_output='A set of prioritized health recommendations, including a summary of findings, suggestions, and lifestyle advice.',
-    agent=health_advisor,
-    context=[analyze_blood_test_task, find_articles_task]
-)
+
+def build_task_templates() -> List[TaskTemplate]:
+    base_intro = (
+        "You receive a JSON object named structured_json."
+        " It contains patient_details, report_metadata, and tests."
+        " Each test includes name, value, unit, reference_range, and flag."
+        " Do not fabricate metrics that are not present."
+    )
+
+    return [
+        TaskTemplate(
+            key="key_findings",
+            agent="analyst",
+            instructions=(
+                f"{base_intro}\n\n"
+                "Produce a concise bullet list (max 6 bullets) summarizing the"
+                " most clinically relevant patterns. Mention exact values and"
+                " whether they are high/low/normal using the flag field."
+                " Respond in Markdown. JSON input:\n{{structured_json}}"
+            ),
+        ),
+        TaskTemplate(
+            key="health_concerns",
+            agent="analyst",
+            instructions=(
+                f"{base_intro}\n\n"
+                "List the main health concerns triggered by abnormal flags."
+                " Explain why each abnormality matters in 2 sentences."
+                " If everything is normal, explain that explicitly."
+                " Respond in Markdown. JSON input:\n{{structured_json}}"
+            ),
+        ),
+        TaskTemplate(
+            key="recommended_tests",
+            agent="researcher",
+            instructions=(
+                f"{base_intro}\n\n"
+                "Suggest follow-up laboratory or imaging tests grounded in the"
+                " data. Limit to 3-4 items. For each, describe the rationale"
+                " referencing the specific lab values or flags."
+                " Respond in Markdown. JSON input:\n{{structured_json}}"
+            ),
+        ),
+        TaskTemplate(
+            key="lifestyle_advice",
+            agent="advisor",
+            instructions=(
+                f"{base_intro}\n\n"
+                "Provide actionable lifestyle and self-care advice that aligns"
+                " with the flagged lab values. Include diet, activity, and"
+                " monitoring suggestions. Respond in Markdown. JSON input:\n{{structured_json}}"
+            ),
+        ),
+        TaskTemplate(
+            key="trusted_resources",
+            agent="researcher",
+            instructions=(
+                f"{base_intro}\n\n"
+                "Use the knowledge base tool to cite 2-3 reputable resources"
+                " (e.g., CDC, WHO, specialty societies) that help the patient"
+                " understand the findings. Each bullet should include a short"
+                " justification. Respond in Markdown. JSON input:\n{{structured_json}}"
+            ),
+        ),
+    ]

@@ -1,63 +1,29 @@
-from crewai import Agent
-from tools import search_tool, web_search_tool
-from langchain_community.chat_models import ChatOllama
+"""Medical crew orchestration built on top of the structured JSON."""
+from __future__ import annotations
 
-# Configure local Ollama model with the Qwen vision-language model for textual reasoning
-ollama_model = ChatOllama(model="qwen2.5vl:32b", temperature=0.7)
+import json
+from typing import Any, Dict
 
-class BloodTestAnalyst(Agent):
-    def __init__(self):
-        super().__init__(
-            role='Blood Test Analyst',
-            goal="Analyze the blood test report, identify key abnormalities...",
-            backstory="A seasoned hematologist with over a decade of experience...",
-            verbose=True,
-            allow_delegation=False,
-            llm=ollama_model
-        )
+from agents import build_agents
+from tasks import build_task_templates
 
-    def analyze_report(self, input_data):
-        # Implement the analysis logic
-        return "analysis result"
-
-class MedicalResearchSpecialist(Agent):
-    def __init__(self):
-        super().__init__(
-            role='Medical Research Specialist',
-            goal="Identify and summarize relevant medical articles...",
-            backstory="An accomplished medical researcher...",
-            tools=[search_tool, web_search_tool],
-            verbose=True,
-            allow_delegation=False,
-            llm=ollama_model
-        )
-
-    def conduct_research(self, input_data):
-        # Implement the research logic
-        return "research result"
-
-class HolisticHealthAdvisor(Agent):
-    def __init__(self):
-        super().__init__(
-            role='Holistic Health Advisor',
-            goal="Provide personalized health recommendations...",
-            backstory="A holistic health practitioner with a deep understanding...",
-            verbose=True,
-            allow_delegation=False,
-            llm=ollama_model
-        )
-
-    def provide_recommendations(self, input_data):
-        # Implement the recommendation logic
-        return "recommendations result"
 
 class MedicalCrew:
+    """Runs the JSON-aware agents sequentially and returns sectioned outputs."""
+
     def __init__(self):
-        self.agents = [
-            BloodTestAnalyst(),
-            MedicalResearchSpecialist(),
-            HolisticHealthAdvisor()
-        ]
-    
-    def crew(self):
-        return self.agents
+        self.agents = build_agents()
+        self.task_templates = build_task_templates()
+
+    def run(self, structured_json: Dict[str, Any]) -> Dict[str, str]:
+        payload = json.dumps(structured_json, ensure_ascii=False, indent=2)
+        outputs: Dict[str, str] = {}
+
+        for template in self.task_templates:
+            agent = self.agents[template.agent]
+            prompt = template.instructions.replace("{structured_json}", payload)
+            response = agent.llm.invoke(prompt)
+            content = getattr(response, "content", str(response))
+            outputs[template.key] = content.strip()
+
+        return outputs
